@@ -28,7 +28,11 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    FirebaseApp.initializeApp(this)
+    try {
+      FirebaseApp.initializeApp(this)
+    } catch (e: Exception) {
+      // Gracefully handle initialization failure (e.g., if resources are missing)
+    }
     enableEdgeToEdge()
 
     val database = JewelryDatabase.getDatabase(applicationContext)

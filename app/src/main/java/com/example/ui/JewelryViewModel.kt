@@ -193,10 +193,10 @@ class JewelryViewModel(
     val dailyItemsSold: StateFlow<Int> = _dailyItemsSold
 
     // --- Firebase Auth & Firestore ---
-    private val auth = FirebaseAuth.getInstance()
-    private val db = FirebaseFirestore.getInstance()
+    private val auth by lazy { try { FirebaseAuth.getInstance() } catch(e: Exception) { null } }
+    private val db by lazy { try { FirebaseFirestore.getInstance() } catch(e: Exception) { null } }
 
-    private val _currentUser = MutableStateFlow<FirebaseUser?>(auth.currentUser)
+    private val _currentUser = MutableStateFlow<FirebaseUser?>(null)
     val currentUser: StateFlow<FirebaseUser?> = _currentUser
 
     private val _syncing = MutableStateFlow(false)
@@ -204,41 +204,55 @@ class JewelryViewModel(
 
     init {
         refreshDailyStats()
-        auth.addAuthStateListener {
-            _currentUser.value = it.currentUser
+        try {
+            auth?.let { firebaseAuth ->
+                _currentUser.value = firebaseAuth.currentUser
+                firebaseAuth.addAuthStateListener {
+                    _currentUser.value = it.currentUser
+                }
+            }
+        } catch (e: Exception) {
+            // Log or ignore
         }
     }
 
     fun signInWithFirebase(idToken: String, onResult: (Boolean) -> Unit) {
+        val firebaseAuth = auth
+        if (firebaseAuth == null) {
+            onResult(false)
+            return
+        }
         val credential = GoogleAuthProvider.getCredential(idToken, null)
-        auth.signInWithCredential(credential).addOnCompleteListener { task ->
+        firebaseAuth.signInWithCredential(credential).addOnCompleteListener { task ->
             onResult(task.isSuccessful)
         }
     }
 
     fun signOut() {
-        auth.signOut()
+        auth?.signOut()
     }
 
     fun syncDataToFirestore() {
-        val user = auth.currentUser
-        if (user == null) return
+        val firebaseAuth = auth
+        val firestore = db
+        val user = firebaseAuth?.currentUser
+        if (user == null || firestore == null) return
 
         _syncing.value = true
         viewModelScope.launch {
             try {
                 val userId = user.uid
-                val batch = db.batch()
+                val batch = firestore.batch()
 
                 // Sync Customers
                 customers.value.forEach { customer ->
-                    val docRef = db.collection("users").document(userId).collection("customers").document(customer.id.toString())
+                    val docRef = firestore.collection("users").document(userId).collection("customers").document(customer.id.toString())
                     batch.set(docRef, customer)
                 }
 
                 // Sync Inventory
                 inventoryItems.value.forEach { item ->
-                    val docRef = db.collection("users").document(userId).collection("inventory").document(item.id.toString())
+                    val docRef = firestore.collection("users").document(userId).collection("inventory").document(item.id.toString())
                     batch.set(docRef, item)
                 }
 
